@@ -1,0 +1,28 @@
+{
+    "name": "concept-labs/phtmal",
+    "description": "(C)oncept-Labs Abstract HTML",
+    "keywords": ["php","html", "abstract language"],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Viktor Halytskyi",
+            "email": "concept.galitsky@gmail.com"
+        }
+    ],
+    "require": {
+        "php": ">=8.2"
+    },
+    "autoload": {
+        "psr-4": {
+            "Concept\\Phtmal\\": "src/"
+        }
+    },
+    "require-dev": {
+    },
+    "autoload-dev": {
+    },
+    "extra": {
+        "concept": {}
+    }
+
+}
