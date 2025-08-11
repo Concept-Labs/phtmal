@@ -231,7 +231,9 @@ class Phtmal implements PhtmalNodeInterface
         return $this->attr('id', $id);
     }
 
-    /** {@inheritDoc} */
+    /** 
+     * {@inheritDoc}  
+     */
     public function class(string ...$class): static
     {
         $current = $this->attributes['class'] ?? [];

@@ -1,0 +1,10 @@
+includes:
+parameters:
+  level: max
+  paths:
+    - src
+  checkGenericClassInNonGenericObjectType: true
+  checkMissingIterableValueType: true
+  checkTooWideReturnTypeDocblock: true
+  reportUnmatchedIgnoredErrors: true
+  memoryLimitFile: .phpstan.resultCache
