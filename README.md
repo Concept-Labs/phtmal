@@ -1,137 +1,210 @@
 # Phtmal
 
-> **P**HP **H**TML **Mal**leable — a tiny, fluent HTML node‑tree for quick layout scaffolding in pure PHP.
+Tiny, fluent HTML node tree with a minimal CSS-like selector engine — built to be lightweight, readable, and extensible. Designed for future integration with a `layout` package (name TBD) and for use in server-side rendering scenarios.
 
-## Contents
-
-- [Why Phtmal?](#why-phtmal)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Public API](#public-api)
-  - [Building HTML](#building-html)
-  - [Attribute helpers](#attribute-helpers)
-  - [Rendering](#rendering)
-  - [Querying with CSS selectors](#querying-with-css-selectors)
-- [Internals & Extension Points](#internals--extension-points)
-- [Performance](#performance)
-- [Roadmap](#roadmap)
-- [License](#license)
+> **Highlights**
+>
+> - Fluent builder via `__call()` (`$ul->li('A')->end()`), with optional subtree callbacks
+> - Pretty vs minified rendering
+> - Safe text nodes and explicit `raw()` nodes
+> - Normalized attributes (boolean attrs supported)
+> - Minimal CSS-like querying (tag, `*`, `#id`, `.class`, `[attr]`, combinators ` ` `>` `+` `~`, `:first-child`, `:last-child`, `:nth-child`)
+> - Extensible: subclasses can override behavior and constants; interfaces define the contract
 
 ---
 
-## Why Phtmal?
-
-* **Zero deps.** Single file, works on PHP 8.1+.  
-* **Fluent builder.**  `div()->ul()->li('One')->end()->li('Two')…`  
-* **Predictable rendering.** Minified by default, pretty–print on demand.  
-* **Fast selector engine.** Supports 90 % of everyday CSS (tag/id/class,  
-  `[attr=value]`, `> + ~` combinators, `:first/last/nth‑child`).  
-* **Extensible core.** Add new pseudo‑classes or combinators in one place.
-
-If you need a full HTML parser/serializer → use DOMDocument.  
-If you want a feather‑light DSL for component stubs, emails, widgets → use Phtmal.
-
 ## Installation
 
+Until the package name is finalized on Packagist, you can include it as a VCS/Path dependency:
+
+**Path repository (local dev):**
+```jsonc
+{
+  "repositories": [
+    { "type": "path", "url": "../phtmal" }
+  ],
+  "require": {
+    "concept-labs/phtmal": "*"
+  }
+}
+```
+
+**VCS repository (GitHub):**
+```jsonc
+{
+  "repositories": [
+    { "type": "vcs", "url": "https://github.com/Concept-Labs/phtmal" }
+  ],
+  "require": {
+    "concept-labs/phtmal": "dev-main"
+  }
+}
+```
+
+Once published to Packagist, it will be as simple as:
 ```bash
 composer require concept-labs/phtmal
 ```
 
-The library ships as a single PSR‑4 class:  
-`Concept\SimpleHttp\Layout\Phtmal`.
+---
 
-## Quick Start
+## Quick start
 
 ```php
-use Concept\SimpleHttp\Layout\Phtmal;
+use Concept\Phtmal\Phtmal;
 
-$html = (new Phtmal('html'))
-    ->header()
-        ->title('Demo')->end()
-    ->end()
-    ->body()
-        ->h1('Hello', ['id' => 'hero'])->end()
-        ->p('Tiny HTML builder')->end()
-        ->ul()
-            ->li('A')->end()
-            ->li('B')->end()
-        ->end()
-    ->end()
+$html = (new Phtmal('ul'))
+    ->li(['class' => 'item'], function (Phtmal $li) {
+        $li->span('A');
+    })
+    ->li('B')->end()
 ->top();
 
-echo $html;              // minified
-echo $html->render();    // pretty
+echo $html->render();   // pretty
+echo (string)$html;     // minified
 ```
 
-## Public API
+**Attributes & boolean attributes:**
+```php
+$btn = (new Phtmal('button', 'Save'))
+    ->class('btn', 'btn-primary')
+    ->attr('disabled', ['disabled']); // short boolean form → renders as: <button disabled>…</button>
+```
 
-### Building HTML
+**Text vs raw HTML:**
+```php
+$div = (new Phtmal('div'))->text('Safe <b>text</b>'); // escaped
+$div->raw('<b>UNSAFE</b>');                           // unescaped (use with care)
+```
 
-| Call | Effect |
-|------|--------|
-| `new Phtmal('tag', ?text, ?attr)` | Creates a root element |
-| `$node->tag($text?, $attr?)` | Adds a child `<tag>`; returns that child |
-| `$child->end()` | Move one level up (parent) |
-| `$node->top()`  | Jump to the root element |
+**Querying:**
+```php
+$items = $html->query('li.item:first-child, li.item:last-child');
+$second = $html->queryOne('#main > .card:nth-child(2)');
+```
 
-### Attribute helpers
+---
 
-| Helper | Description |
-|--------|-------------|
-| `$node->id('header')` | Add/replace the `id` attribute |
-| `$node->class('box', 'box-lg')` | Merge classes (deduplicated) |
-| `$node->attr('data-x', '42')` | Generic setter; `null` removes the attribute |
+## Interfaces
 
-### Rendering
+The library is interface-first. Documentation primarily lives on interfaces; implementations use `{@inheritDoc}`.
 
-| Method | Result |
-|--------|--------|
-| `__toString()` | Minified HTML |
-| `render(bool $minify = false)` | `false` ⇒ indented / pretty‑print |
+- `PhtmalNodeInterface` — node contract (fluent API, rendering, navigation, query integration).
+- `SelectorInterface` — static querying: `select(PhtmalNodeInterface $root, string $selector): array`.
 
-### Querying with CSS selectors
+Key guarantees:
+- Implementations **escape** text on render (except explicit `#raw` nodes).
+- Attributes are normalized to **lists of strings**, enabling predictable rendering and boolean-shortcuts.
+- Children order is **stable**.
+
+---
+
+## Core API (from `PhtmalNodeInterface`)
 
 ```php
-$uls = $html->query('body > ul');     // returns array of Phtmal
-$firstLi = $html->query('li:first-child')[0];
+// Builder & structure
+__call(string $tag, array $args): PhtmalNodeInterface
+end(): PhtmalNodeInterface
+top(): PhtmalNodeInterface
+append(PhtmalNodeInterface|string $nodeOrText): static
+raw(string $html): static
+
+// Content & attributes
+text(?string $text): static
+attr(string $name, string|array|null $value = null): static
+id(string $id): static
+class(string ...$class): static
+data(string $key, string $value): static
+aria(string $key, string $value): static
+
+// Navigation & mutation
+parent(): ?PhtmalNodeInterface
+firstChild(): ?PhtmalNodeInterface
+nextSibling(): ?PhtmalNodeInterface
+cloneDeep(): PhtmalNodeInterface
+detach(): static
+replaceWith(PhtmalNodeInterface $node): PhtmalNodeInterface
+
+// Rendering
+render(bool $minify = false, int $indentLevel = 0): string
+
+// Querying
+query(string $selector): array
+queryOne(string $selector): ?PhtmalNodeInterface
+
+// Meta
+getTag(): string
 ```
 
-Supported syntax:
+Notes:
+- `__call('li', [...])` supports either `(text, attrs)` or `(attrs, callback)` — if a **callback** is the last argument, the method returns the **parent** (auto-jump back). Otherwise, it returns the new **child** (you can `->end()` manually).
+- Boolean attributes are rendered in short form if normalized as `['disabled' => ['disabled']]`.
 
+---
+
+## Selector subset
+
+Supported primitives:
+- `tag`, `*`, `#id`, `.class`
+- `[attr]`, `[attr=value]`, `[attr^=v]`, `[attr$=v]`, `[attr*=v]` (value can be quoted or unquoted)
+- Combinators: descendant (` `), child (`>`), adjacent (`+`), sibling (`~`)
+- Pseudos: `:first-child`, `:last-child`, `:nth-child(n|odd|even)`
+
+> Adjacent (`+`) and general sibling (`~`) semantics are implemented relative to the **current matched node** (fixed from earlier versions that mistakenly inspected only the first child).
+
+
+**Subclass example:**
+
+```php
+class XhtmlPhtmal extends \Concept\Phtmal\Phtmal
+{
+    protected const VOID_ELEMENTS = ['br', 'hr', 'img', 'meta', 'link'];
+
+    protected function escape(string $text): string
+    {
+        // e.g. custom flags/charset or entity policy
+        return htmlspecialchars($text, ENT_QUOTES | ENT_HTML401, 'UTF-8');
+    }
+
+    protected static function renderAttributes(array $attributes): string
+    {
+        // ensure deterministic attribute order (useful for testing)
+        ksort($attributes);
+        return parent::renderAttributes($attributes);
+    }
+}
 ```
-tag, *       #div       .cls
-[attr=value]                 /* exact match */
->  +  ~  (space)             /* combinators  */
-:first-child  :last-child
-:nth-child(n|odd|even)
-```
 
-### Internals & Extension Points
+---
 
-* Parsing lives in `Selector::tokenize()` → extend regex or swap with a real
-  parser.
-* Enum `Pseudo` and `Combinator` fence off future growth — add new cases and
-  update `matches()` and `candidates()`.
-* Rendering constants `VOID_ELEMENTS`, `DEFAULT_INDENT`, `NL` are in one place.
-* Want indexes for big trees? Provide alternative `SelectorIndexed` and call it
-  from `Phtmal::query()` via a factory.
+## Layout package integration (preview idea)
 
-### Performance
+Phtmal works nicely as a low-level DOM builder for the future `layout` package:
 
-* Linear DFS traversal, no global caches ⇒ **O(N + M)** where N = nodes,
-  M = matches.
-* ~20 µs to build 1 k‑node tree, ~60 µs for `query('*')` on PHP 8.2 (M1).
-* Memory per node ≈ 400 bytes incl. PHP zval overhead.
+- **Composable blocks**: expose helpers that return `Phtmal` subtrees (`header()`, `footer()`, `card($title, $body)`).
+- **Slots/partials**: pass callbacks into node builders to inject variable content.
+- **Theming**: attach `class()`/`data()` policies at a single override point (subclass + `renderAttributes()` or decorators).
+- **Safety**: keep everything escaped by default; allow `raw()` **only** for trusted HTML fragments.
 
-### Roadmap
+---
 
-| Idea | Status |
-|------|--------|
-| `:empty`, `:root`, `:only-child` pseudos | ☐ |
-| Attribute operators `^= $= *=` | ☐ |
-| More combinators (`>>`, `||`) | ☐ |
-| Optional DOMDocument bridge | ☐ |
+## Performance tips
+
+- Selector tokenization is cached in-memory; reusing the same selector string is cheap.
+- For very large trees:
+  - Build once, update in place (e.g., `text()`/`replaceWith()`), then render.
+  - Consider indexing nodes by id/class during construction if you do heavy querying.
+- Rendering is streaming-recursive; depth-first and quite fast for typical UI trees.
+
+---
+
+- Optional `an+b` syntax for `:nth-child`.
+- Optional `queryAll()->iterator` for lazy traversal.
+- Potential `toArray()` / `fromArray()` serialization helpers.
+- Pluggable selector engine (via `SelectorInterface`) for advanced use-cases.
+
+---
 
 ## License
 
-Apache 2.0 — see `LICENSE` file.
+Apache-2.0
