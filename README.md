@@ -198,6 +198,7 @@ Phtmal works nicely as a low-level DOM builder for the future `layout` package:
 
 ---
 
+## TODO
 - Optional `an+b` syntax for `:nth-child`.
 - Optional `queryAll()->iterator` for lazy traversal.
 - Potential `toArray()` / `fromArray()` serialization helpers.
