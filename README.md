@@ -1,5 +1,11 @@
 # Phtmal
 
+```php
+foreach ($phtmal->query('ul>li:nth-child(even), h1[data-attr^="test"]') as $el) {
+    $el->attr('class', 'highlight'); 
+}
+```
+
 Tiny, fluent HTML node tree with a minimal CSS-like selector engine — built to be lightweight, readable, and extensible. Designed for future integration with a `layout` package (name TBD) and for use in server-side rendering scenarios.
 
 > **Highlights**
