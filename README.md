@@ -208,4 +208,4 @@ Phtmal works nicely as a low-level DOM builder for the future `layout` package:
 
 ## License
 
-Apache-2.0
+MIT
