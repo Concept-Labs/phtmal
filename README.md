@@ -1,11 +1,5 @@
 # Phtmal
 
-```php
-foreach ($phtmal->query('ul>li:nth-child(even), h1[data-attr^="test"]') as $el) {
-    $el->attr('class', 'highlight'); 
-}
-```
-
 Tiny, fluent HTML node tree with a minimal CSS-like selector engine — built to be lightweight, readable, and extensible. Designed for future integration with a `layout` package (name TBD) and for use in server-side rendering scenarios.
 
 > **Highlights**
@@ -16,12 +10,18 @@ Tiny, fluent HTML node tree with a minimal CSS-like selector engine — built to
 > - Normalized attributes (boolean attrs supported)
 > - Minimal CSS-like querying (tag, `*`, `#id`, `.class`, `[attr]`, combinators ` ` `>` `+` `~`, `:first-child`, `:last-child`, `:nth-child`)
 > - Extensible: subclasses can override behavior and constants; interfaces define the contract
+> - **NEW:** Parse raw HTML into a Phtmal tree via `HtmlParserInterface` + `DomHtmlParser`
 
 ---
 
 ## Installation
 
-Until the package name is finalized on Packagist, you can include it as a VCS/Path dependency:
+Once published to Packagist:
+```bash
+composer require concept-labs/phtmal
+```
+
+For local/VCS use meanwhile:
 
 **Path repository (local dev):**
 ```jsonc
@@ -47,11 +47,6 @@ Until the package name is finalized on Packagist, you can include it as a VCS/Pa
 }
 ```
 
-Once published to Packagist, it will be as simple as:
-```bash
-composer require concept-labs/phtmal
-```
-
 ---
 
 ## Quick start
@@ -74,7 +69,7 @@ echo (string)$html;     // minified
 ```php
 $btn = (new Phtmal('button', 'Save'))
     ->class('btn', 'btn-primary')
-    ->attr('disabled', ['disabled']); // short boolean form → renders as: <button disabled>…</button>
+    ->attr('disabled', ['disabled']); // short boolean form → <button disabled>…</button>
 ```
 
 **Text vs raw HTML:**
@@ -91,12 +86,72 @@ $second = $html->queryOne('#main > .card:nth-child(2)');
 
 ---
 
-## Interfaces
+## HTML parsing (NEW)
+
+You can parse raw HTML (documents or fragments) into a `Phtmal` tree using the parser interface.
+
+### Interfaces
+- `HtmlParserInterface` — contract:
+  - `parseDocument(string $html, array $options = []): PhtmalNodeInterface`
+  - `parseFragment(string $html, string $containerTag = 'div', array $options = []): PhtmalNodeInterface`
+- `DomHtmlParser` — DOMDocument-based implementation (tolerant to malformed HTML).
+
+### Usage
+**Parse a full document:**
+```php
+use Concept\Phtmal\DomHtmlParser;
+
+$parser = new DomHtmlParser();
+$root = $parser->parseDocument('<!doctype html><html><body><div id="x">t</div></body></html>');
+
+// $root is the <html> node
+echo $root->render();       // pretty
+echo (string)$root;         // minified
+```
+
+**Parse a fragment (no implied `<html>/<body>`):**
+```php
+$parser = new DomHtmlParser();
+$list = $parser->parseFragment('<li>A</li><li class="x">B</li>', 'ul');
+
+echo (string)$list; // <ul><li>A</li><li class="x">B</li></ul>
+```
+
+**Scripts/styles are imported as RAW nodes (not escaped):**
+```php
+$parser = new DomHtmlParser();
+$div = $parser->parseFragment('<script>if (a < b) { alert("x"); }</script>', 'div');
+echo (string)$div;
+// <div><script>if (a < b) { alert("x"); }</script></div>
+```
+
+**Custom factory (use your subclass of Phtmal):**
+```php
+class MyNode extends Concept\Phtmal\Phtmal {}
+$parser = new DomHtmlParser(fn(string $tag, ?string $text, array $attr) => new MyNode($tag, $text, $attr));
+$tree = $parser->parseFragment('<span>Hello</span>', 'div');
+```
+
+### Options
+`parseDocument()` and `parseFragment()` accept the same `$options` array:
+
+| Option | Type | Default | Description |
+|---|---|---:|---|
+| `dropComments` | `bool` | `true` | Drop HTML comments. |
+| `preserveWhitespace` | `bool` | `false` | Keep whitespace-only text nodes outside `<pre>/<textarea>`. |
+| `preservePreWhitespace` | `bool` | `true` | Preserve whitespace in `<pre>` / `<textarea>`. |
+| `encoding` | `string` | `'UTF-8'` | Input encoding hint for DOMDocument. |
+| `rawTextTags` | `string[]` | `['script','style']` | Treat content of these tags as RAW (unescaped). |
+
+---
+
+## Interfaces (core)
 
 The library is interface-first. Documentation primarily lives on interfaces; implementations use `{@inheritDoc}`.
 
 - `PhtmalNodeInterface` — node contract (fluent API, rendering, navigation, query integration).
 - `SelectorInterface` — static querying: `select(PhtmalNodeInterface $root, string $selector): array`.
+- `HtmlParserInterface` — parse raw HTML into a Phtmal tree.
 
 Key guarantees:
 - Implementations **escape** text on render (except explicit `#raw` nodes).
@@ -148,70 +203,29 @@ Notes:
 
 ---
 
-## Selector subset
+## Extensibility recommendations
 
-Supported primitives:
-- `tag`, `*`, `#id`, `.class`
-- `[attr]`, `[attr=value]`, `[attr^=v]`, `[attr$=v]`, `[attr*=v]` (value can be quoted or unquoted)
-- Combinators: descendant (` `), child (`>`), adjacent (`+`), sibling (`~`)
-- Pseudos: `:first-child`, `:last-child`, `:nth-child(n|odd|even)`
+- Overridable constants (protected): `VOID_ELEMENTS`, `INDENT`, `NL`.
+- Overridable hooks (protected): `newNode()`, `escape()`, `renderAttributes()`, `_childrenRef()`.
+- Open state (protected): `parent`, `children`, `tag`, `attributes`, `text`.
 
-> Adjacent (`+`) and general sibling (`~`) semantics are implemented relative to the **current matched node** (fixed from earlier versions that mistakenly inspected only the first child).
+---
 
+## Testing & QA
 
-**Subclass example:**
-
-```php
-class XhtmlPhtmal extends \Concept\Phtmal\Phtmal
-{
-    protected const VOID_ELEMENTS = ['br', 'hr', 'img', 'meta', 'link'];
-
-    protected function escape(string $text): string
-    {
-        // e.g. custom flags/charset or entity policy
-        return htmlspecialchars($text, ENT_QUOTES | ENT_HTML401, 'UTF-8');
-    }
-
-    protected static function renderAttributes(array $attributes): string
-    {
-        // ensure deterministic attribute order (useful for testing)
-        ksort($attributes);
-        return parent::renderAttributes($attributes);
-    }
-}
+Install dev tools:
+```bash
+composer require --dev phpunit/phpunit:^10 phpstan/phpstan:^1.11
 ```
 
----
-
-## Layout package integration (preview idea)
-
-Phtmal works nicely as a low-level DOM builder for the future `layout` package:
-
-- **Composable blocks**: expose helpers that return `Phtmal` subtrees (`header()`, `footer()`, `card($title, $body)`).
-- **Slots/partials**: pass callbacks into node builders to inject variable content.
-- **Theming**: attach `class()`/`data()` policies at a single override point (subclass + `renderAttributes()` or decorators).
-- **Safety**: keep everything escaped by default; allow `raw()` **only** for trusted HTML fragments.
-
----
-
-## Performance tips
-
-- Selector tokenization is cached in-memory; reusing the same selector string is cheap.
-- For very large trees:
-  - Build once, update in place (e.g., `text()`/`replaceWith()`), then render.
-  - Consider indexing nodes by id/class during construction if you do heavy querying.
-- Rendering is streaming-recursive; depth-first and quite fast for typical UI trees.
-
----
-
-## TODO
-- Optional `an+b` syntax for `:nth-child`.
-- Optional `queryAll()->iterator` for lazy traversal.
-- Potential `toArray()` / `fromArray()` serialization helpers.
-- Pluggable selector engine (via `SelectorInterface`) for advanced use-cases.
+Run tests and static analysis:
+```bash
+vendor/bin/phpunit
+vendor/bin/phpstan analyse
+```
 
 ---
 
 ## License
 
-Apache-2.0
+MIT
